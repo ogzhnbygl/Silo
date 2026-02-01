@@ -35,14 +35,14 @@ export default async function handler(req, res) {
             return res.status(200).json({ stats, recentActivity });
         } catch (error) {
             console.error('Inventory GET Error:', error);
-            return res.status(500).json({ error: 'Failed to fetch data' });
+            return res.status(500).json({ error: 'Veri alınamadı' });
         }
     } else if (req.method === 'POST') {
         try {
             const { type, amount, weightPerPkg } = req.body; // type: 'IN' | 'OUT'
 
             if (!amount || amount <= 0) {
-                return res.status(400).json({ error: 'Invalid amount' });
+                return res.status(400).json({ error: 'Geçersiz miktar' });
             }
 
             const pkgWeight = weightPerPkg || 4; // Default 4kg per package if not specified
@@ -72,12 +72,12 @@ export default async function handler(req, res) {
                     weight: totalWeightChange,
                     user: user.name,
                     date: new Date(),
-                    details: 'Shipment Received'
+                    details: 'Teslimat Alındı'
                 });
 
             } else if (type === 'OUT') {
                 if (stats.totalStock < amount) {
-                    return res.status(400).json({ error: 'Insufficient stock' });
+                    return res.status(400).json({ error: 'Yetersiz stok' });
                 }
 
                 // Update Stats
@@ -95,17 +95,17 @@ export default async function handler(req, res) {
                     weight: totalWeightChange,
                     user: user.name,
                     date: new Date(),
-                    details: 'Package Taken'
+                    details: 'Paket Çıkışı'
                 });
             } else {
-                return res.status(400).json({ error: 'Invalid transaction type' });
+                return res.status(400).json({ error: 'Geçersiz işlem tipi' });
             }
 
             return res.status(200).json({ success: true });
 
         } catch (error) {
             console.error('Inventory POST Error:', error);
-            return res.status(500).json({ error: 'Transaction failed' });
+            return res.status(500).json({ error: 'İşlem başarısız' });
         }
     } else {
         res.setHeader('Allow', ['GET', 'POST']);

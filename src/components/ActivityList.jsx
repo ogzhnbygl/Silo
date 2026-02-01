@@ -26,7 +26,11 @@ export function ActivityList({ activities = [] }) {
                                     {activity.type === 'IN' ? <ArrowDownLeft size={20} /> : <ArrowUpRight size={20} />}
                                 </div>
                                 <div>
-                                    <div className="font-medium text-slate-900">{activity.details || (activity.type === 'IN' ? 'Teslimat Alındı' : 'Paket Çıkışı')}</div>
+                                    <div className="font-medium text-slate-900">
+                                        {activity.details === 'Shipment Received' ? 'Teslimat Alındı' :
+                                            activity.details === 'Package Taken' ? 'Paket Çıkışı' :
+                                                activity.details || (activity.type === 'IN' ? 'Teslimat Alındı' : 'Paket Çıkışı')}
+                                    </div>
                                     <div className="text-sm text-slate-500">
                                         {activity.user} tarafından • {new Date(activity.date).toLocaleDateString("tr-TR")}
                                     </div>
@@ -34,7 +38,7 @@ export function ActivityList({ activities = [] }) {
                             </div>
                             <div className={`font-bold ${activity.type === 'IN' ? 'text-green-600' : 'text-red-600'
                                 }`}>
-                                {activity.type === 'IN' ? '+' : '-'}{activity.amount} Pkg
+                                {activity.type === 'IN' ? '+' : '-'}{activity.amount} Paket
                             </div>
                         </div>
                     ))

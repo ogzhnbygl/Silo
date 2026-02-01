@@ -44,21 +44,21 @@ export function Dashboard() {
     const stockStatus = data.stats.totalStock > 10 ? 'Optimal Seviye' : 'Stok Az';
     const isOptimal = data.stats.totalStock > 10;
 
-    if (loading) return <div className="animate-pulse p-4">Loading dashboard...</div>;
+    if (loading) return <div className="animate-pulse p-4">Yükleniyor...</div>;
 
     return (
         <div className="space-y-6">
             {/* Top Stats Row */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <StatsCard
-                    title="Total Stock"
+                    title="Toplam Stok"
                     value={data.stats.totalStock}
-                    unit="Pkgs"
+                    unit="Paket"
                     icon={Package} // Using Package icon for stock
                     colorClass="text-slate-900"
                 />
                 <StatsCard
-                    title="Total Weight"
+                    title="Toplam Ağırlık"
                     value={data.stats.totalWeight}
                     unit="kg"
                     icon={Weight}
@@ -72,13 +72,13 @@ export function Dashboard() {
             {/* Action Buttons Row */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <ActionCard
-                    title="Receive Shipment"
+                    title="Teslimat Al"
                     icon={Plus}
                     variant="primary"
                     onClick={() => handleAction('IN')}
                 />
                 <ActionCard
-                    title="Take Package"
+                    title="Paket Çıkışı"
                     icon={LogOut} // Using LogOut (exit) icon for taking package
                     variant="outline"
                     onClick={() => handleAction('OUT')}

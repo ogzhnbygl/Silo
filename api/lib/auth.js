@@ -1,7 +1,18 @@
 import clientPromise from '../../lib/mongodb.js';
 
 export async function verifyUser(req) {
-    const cookieHeader = req.headers.cookie || '';
+    // Mock for local development
+    if (process.env.NODE_ENV === 'development' && !req.headers.cookie?.includes('interapp_session')) {
+        console.log('DEV MODE: Using mock user for backend');
+        return {
+            email: 'dev@wildtype.app',
+            name: 'Developer (Mock)',
+            role: 'admin',
+            apps: ['silo']
+        };
+    }
+
+    const cookieHeader = (req.headers && req.headers.cookie) || '';
 
     // 1. Verify Identity with Apex
     const apexResponse = await fetch('https://wildtype.app/api/auth/me', {
