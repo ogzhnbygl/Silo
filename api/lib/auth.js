@@ -49,6 +49,7 @@ export async function verifyUser(req) {
 
     return {
         ...userData,
+        name: user.name || user.email.split('@')[0], // Fallback to email prefix if name is missing
         role: user.role,
         apps: user.apps,
         db // Return db connection if needed, though usually new connection to Silo_db is needed
