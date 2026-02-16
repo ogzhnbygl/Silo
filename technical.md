@@ -1,99 +1,66 @@
-# Silo Teknik Dökümantasyon
+# Silo - Teknik Dokümantasyon
 
-## 1. Teknoloji Yığını
+Bu doküman, Silo projesinin teknik mimarisini, veritabanı yapısını ve API referanslarını detaylandırır.
 
-### Ön Yüz (Frontend)
-- **Framework**: React 19
-- **Derleme Aracı**: Vite
-- **Stillendirme**: Tailwind CSS (dinamik sınıflar için `tailwind-merge` ve `clsx` ile)
-- **İkonlar**: Lucide React
-- **HTTP İstemcisi**: Yerel (Native) `fetch` API
+## 🏗️ Mimari Genel Bakış
 
-### Arka Uç (Backend)
-- **Çalışma Zamanı**: Node.js (Vercel Serverless Functions)
-- **Yönlendirme**: `/api` dizininde dosya tabanlı yönlendirme
+Silo, karmaşık olmayan ancak kritik veri bütünlüğü gerektiren bir envanter sistemidir.
 
-### Veritabanı
-- **Sistem**: MongoDB
-- **Sürücü**: `mongodb` (Yerel Node.js sürücüsü)
+- **Frontend:** React 19 + Vite.
+- **Backend:** Node.js (Vercel Serverless Functions).
+- **Veritabanı:** MongoDB. Singleton (Tekil) kayıt yapısı ve Transaction Log (İşlem Günlüğü) modeli kullanılır.
 
-## 2. API Referansı
+## 📂 Dizin Yapısı
 
-### Temel URL: `/api`
+```
+Silo/
+├── api/                # Backend API (Vercel Serverless Functions)
+│   ├── inventory.js    # Stok işlemleri (GET, POST)
+│   └── lib/            # Auth ve DB yardımcıları
+├── src/                # Frontend Kaynak Kodları
+│   ├── components/     # UI Bileşenleri (Dashboard, Forms)
+│   ├── lib/            # Yardımcı Fonksiyonlar
+│   └── App.jsx         # Ana Uygulama
+└── public/             # Statik Dosyalar
+```
 
-### 2.1 Envanter Yönetimi (`/api/inventory`)
+## 🗄️ Veritabanı Şeması
+
+### Koleksiyon: `inventory_stats`
+Sistemin "anı" temsil eden, tek bir dokümandan oluşan koleksiyondur.
+- **Anahtar:** `_id: "main"`
+- **Alanlar:**
+    - `totalStock`: `number` (Toplam ürün/paket sayısı)
+    - `totalWeight`: `number` (Toplam ağırlık kg)
+
+### Koleksiyon: `transactions`
+Her envanter değişikliğinin (Log) saklandığı koleksiyondur.
+- **Alanlar:**
+    - `type`: `"IN" | "OUT"`
+    - `amount`: `number`
+    - `weight`: `number`
+    - `user`: `string` (İşlemi yapan kullanıcı)
+    - `date`: `Date`
+    - `details`: `string` (Açıklama)
+
+## 🔌 API Referansı
+
+### `/api/inventory`
 
 #### GET
 Mevcut envanter istatistiklerini ve son işlem kayıtlarını getirir.
-
-- **Yanıt**: `200 OK`
-  ```json
-  {
-    "stats": {
-      "_id": "main",
-      "totalStock": 150,
-      "totalWeight": 600
-    },
-    "recentActivity": [
-      {
-        "type": "IN", // veya "OUT"
-        "amount": 10,
-        "weight": 40,
-        "user": "Kullanıcı Adı",
-        "date": "2023-10-27T10:00:00.000Z",
-        "details": "Teslimat Alındı"
-      }
-    ]
-  }
-  ```
+- **Yanıt:** `{ stats: {...}, recentActivity: [...] }`
 
 #### POST
 Bir envanter işlemi (Stok GİRİŞ veya Stok ÇIKIŞ) gerçekleştirir.
+- **Body:** `{ type: "IN"|"OUT", amount: 10, weightPerPkg: 4 }`
+- **İşlem:**
+    1. Auth kontrolü yapılır.
+    2. Stok yeterliliği (ÇIKIŞ için) kontrol edilir.
+    3. `inventory_stats` güncellenir.
+    4. `transactions` koleksiyonuna kayıt atılır.
 
-- **Başlıklar (Headers)**:
-  - `Content-Type`: `application/json`
-  - `Cookie`: Geçerli oturum çerezi gereklidir (`verifyUser` ile kontrol edilir)
+## 🔐 Güvenlik
 
-- **Gövde Parametreleri (Body)**:
-  - `type`: `string` ("IN" veya "OUT") - **Zorunlu**
-  - `amount`: `number` (Birim/paket cinsinden miktar) - **Zorunlu**
-  - `weightPerPkg`: `number` (Paket başına kg ağırlığı, varsayılan: 4) - *Opsiyonel*
-
-- **Yanıt**: `200 OK`
-  ```json
-  {
-    "success": true
-  }
-  ```
-- **Hatalar**:
-  - `400 Bad Request`: Geçersiz miktar, yetersiz stok (ÇIKIŞ için) veya geçersiz işlem tipi.
-  - `401 Unauthorized`: Kullanıcı giriş yapmamış.
-  - `500 Internal Server Error`: Veritabanı işlemi başarısız.
-
-## 3. Veritabanı Şeması
-
-### Koleksiyon: `inventory_stats`
-Toplam envanter durumunun tekil kaydını (singleton record) saklar.
-- **Anahtar Doküman**: `_id: "main"`
-  - `totalStock`: `number` (Toplam ürün/paket sayısı)
-  - `totalWeight`: `number` (Toplam ağırlık kg)
-
-### Koleksiyon: `transactions`
-Her envanter değişikliğinin kaydını (log) saklar.
-- **Doküman Yapısı**:
-  - `type`: `"IN" | "OUT"`
-  - `amount`: `number`
-  - `weight`: `number`
-  - `user`: `string` (İşlemi yapan kullanıcının adı)
-  - `date`: `Date`
-  - `details`: `string` (Açıklama, örn. "Teslimat Alındı")
-
-## 4. Kimlik Doğrulama
-- `./lib/auth.js` içindeki `verifyUser` aracılığıyla paylaşılan bir kimlik doğrulama mekanizması kullanır.
-- İstek çerezlerinde geçerli bir oturum belirteci (JWT) bekler.
-- Çözümlenen kullanıcı bilgileri (örn. `user.name`) işlem kayıtlarına eklenir.
-
-## 5. Geliştirme & Dağıtım
-- **Yerel Geliştirme**: `npm run dev` (Vite geliştirme sunucusunu başlatır).
-- **Linting**: `npm run lint` (ESLint).
-- **Dağıtım**: Vercel üzerinden dağıtılır. `MONGODB_URI` ortam değişkeni gerektirir.
+- **Auth:** Apex ile paylaşılan JWT tabanlı oturum.
+- **Doğrulama:** Backend tarafında işlem öncesi stok kontrolü (Race condition yönetimi için MongoDB atomik operatörleri kullanılır).

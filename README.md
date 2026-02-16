@@ -1,69 +1,80 @@
-# Silo
+# Silo - Envanter Yönetim Sistemi
 
-**Silo**, endüstriyel yem ve tahıl depolamanın verimli bir şekilde takibi için tasarlanmış modern, sunucusuz (serverless) bir envanter yönetim panelidir. Stok seviyeleri için gerçek zamanlı "Tek Doğruluk Kaynağı" (Single Source of Truth), kapsamlı işlem günlüğü ve günlük operasyonlar için kullanıcı dostu bir arayüz sağlar.
+**Silo**, endüstriyel yem ve tahıl depolamanın verimli bir şekilde takibi için tasarlanmış modern, sunucusuz (serverless) bir envanter yönetim panelidir.
 
-## 📚 Dökümantasyon
+Stok seviyeleri için gerçek zamanlı **"Tek Doğruluk Kaynağı" (Single Source of Truth)**, kapsamlı işlem günlüğü ve günlük operasyonlar için kullanıcı dostu bir arayüz sağlar.
 
-Proje hakkında daha detaylı bilgi için lütfen aşağıdaki belgelere göz atın:
+## 🚀 Özellikler
 
-- **[Blueprint](./BLUEPRINT.md)**: Kavramsal genel bakış, temel hedefler ve üst düzey mimari.
-- **[Teknik Dökümantasyon](./technical.md)**: Detaylı teknoloji yığını, API referansı ve veritabanı şeması.
+- **Merkezi Stok Kontrolü:**
+    - Toplam mevcut stokun (kg/paket) büyük ve net gösterimi.
+    - Stok sağlığını (Yüksek/Düşük/Kritik) temsil eden görsel ipuçları.
+- **Envanter Yönetimi:**
+    - **Stok Giriş:** Yeni sevkiyatları sisteme hızlıca kaydetme.
+    - **Stok Çıkış:** Kullanım/tüketim işlemlerini anlık olarak düşme.
+    - Negatif stok engelleme ve otomatik doğrulama mekanizmaları.
+- **İşlem Şeffaflığı:**
+    - Her hareketin (GİRİŞ/ÇIKIŞ) kullanıcı bilgisi ve zaman damgasıyla kaydı.
+    - Geçmiş işlemlerin detaylı listesi ve filtrelenmesi.
+- **Apex Entegrasyonu:**
+    - Merkezi kimlik doğrulama ile güvenli erişim.
+    - Kurumsal standartlara uygun oturum yönetimi.
 
-## 🚀 Başlarken
+## 🛠️ Teknolojiler
+
+Silo, endüstriyel güvenilirlik ve modern web performansı için optimize edilmiştir:
+
+### Frontend
+- **Framework:** [React 19](https://react.dev/)
+- **Build Tool:** [Vite](https://vitejs.dev/)
+- **Styling:** [Tailwind CSS](https://tailwindcss.com/)
+- **Icons:** [Lucide React](https://lucide.dev/)
+
+### Backend
+- **Runtime:** [Vercel Serverless Functions](https://vercel.com/docs/functions)
+- **Database:** [MongoDB](https://www.mongodb.com/)
+
+## 📦 Kurulum
+
+Projeyi yerel ortamınızda çalıştırmak için:
 
 ### Gereksinimler
+- Node.js (v18+)
+- MongoDB Veritabanı
 
-- [Node.js](https://nodejs.org/) (v18 veya üzeri)
-- [MongoDB](https://www.mongodb.com/) (Yerel veya Atlas)
-- [Vercel CLI](https://vercel.com/docs/cli) (dağıtım için)
+### Adımlar
 
-### Kurulum
-
-1. **Depoyu klonlayın**
+1. **Repoyu klonlayın:**
    ```bash
-   git clone <repository_url>
+   git clone <repo-url>
    cd Silo
    ```
 
-2. **Bağımlılıkları yükleyin**
+2. **Bağımlılıkları yükleyin:**
    ```bash
    npm install
    ```
 
-3. **Ortam Değişkenlerini Yapılandırın**
-   Kök dizinde bir `.env` dosyası oluşturun ve MongoDB bağlantı dizesini ekleyin:
+3. **Çevresel Değişkenleri Ayarlayın:**
+   `.env` dosyasını oluşturun:
    ```env
-   MONGODB_URI=mongodb+srv://<kullanici>:<sifre>@<cluster>.mongodb.net/?retryWrites=true&w=majority
+   MONGODB_URI=mongodb+srv://...
    ```
 
-4. **Geliştirme Sunucusunu Başlatın**
+4. **Geliştirme Sunucusunu Başlatın:**
    ```bash
    npm run dev
    ```
    Uygulama `http://localhost:5173` adresinde çalışacaktır.
 
-## 🛠️ Komutlar (Scripts)
+## 📂 Proje Yapısı
 
-- `npm run dev`: Vite geliştirme sunucusunu başlatır.
-- `npm run build`: Uygulamayı üretim (production) için derler.
-- `npm run preview`: Üretim derlemesini yerel olarak önizler.
-- `npm run lint`: Kod kalitesi sorunlarını kontrol etmek için ESLint'i çalıştırır.
+- `/src`: Frontend kaynak kodları.
+- `/api`: Backend API fonksiyonları (Stok ve İşlem Yönetimi).
+- `/public`: Statik dosyalar.
 
-## ☁️ Dağıtım
+Detaylı teknik bilgi için [TECHNICAL.md](./TECHNICAL.md) dosyasına bakabilirsiniz.
 
-Bu proje [Vercel](https://vercel.com) üzerinde dağıtım için optimize edilmiştir.
+## 📜 Lisans
 
-1. Vercel CLI'ı yükleyin:
-   ```bash
-   npm i -g vercel
-   ```
-
-2. Dağıtın:
-   ```bash
-   vercel
-   ```
-
-Vercel proje ayarlarında `MONGODB_URI` ortam değişkenini tanımladığınızdan emin olun.
-
-## 📝 Lisans
-[MIT](LICENSE)
+Bu proje özel mülkiyettir. İzinsiz kopyalanması ve dağıtılması yasaktır.
