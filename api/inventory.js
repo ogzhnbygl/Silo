@@ -1,5 +1,12 @@
 import clientPromise from '../lib/mongodb.js';
 import { verifyUser } from './lib/auth.js';
+import { z } from 'zod';
+
+const inventoryPostSchema = z.object({
+    type: z.enum(['IN', 'OUT']),
+    amount: z.number().int().positive('Miktar pozitif bir tam sayı olmalıdır.'),
+    weightPerPkg: z.number().positive('Paket ağırlığı pozitif bir sayı olmalıdır.').optional()
+});
 
 export default async function handler(req, res) {
     let user;
@@ -39,21 +46,14 @@ export default async function handler(req, res) {
         }
     } else if (req.method === 'POST') {
         try {
-            const { type, amount, weightPerPkg } = req.body; // type: 'IN' | 'OUT'
-
-            if (!amount || amount <= 0) {
-                return res.status(400).json({ error: 'Geçersiz miktar' });
+            const bodyResult = inventoryPostSchema.safeParse(req.body);
+            if (!bodyResult.success) {
+                return res.status(400).json({ error: bodyResult.error.errors[0].message });
             }
+            const { type, amount, weightPerPkg } = bodyResult.data;
 
             const pkgWeight = weightPerPkg || 4; // Default 4kg per package if not specified
             const totalWeightChange = amount * pkgWeight;
-
-            // Get current stats
-            let stats = await statsCollection.findOne({ _id: 'main' });
-            if (!stats) {
-                stats = { _id: 'main', totalStock: 0, totalWeight: 0 };
-                await statsCollection.insertOne(stats);
-            }
 
             // Transaction Logic
             if (type === 'IN') {
@@ -62,7 +62,8 @@ export default async function handler(req, res) {
                     { _id: 'main' },
                     {
                         $inc: { totalStock: amount, totalWeight: totalWeightChange }
-                    }
+                    },
+                    { upsert: true }
                 );
 
                 // Log Transaction
@@ -97,8 +98,6 @@ export default async function handler(req, res) {
                     date: new Date(),
                     details: 'Paket Çıkışı'
                 });
-            } else {
-                return res.status(400).json({ error: 'Geçersiz işlem tipi' });
             }
 
             return res.status(200).json({ success: true });
