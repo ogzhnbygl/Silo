@@ -76,17 +76,17 @@ export default async function handler(req, res) {
                 });
 
             } else if (type === 'OUT') {
-                if (stats.totalStock < amount) {
-                    return res.status(400).json({ error: 'Yetersiz stok' });
-                }
-
-                // Update Stats
-                await statsCollection.updateOne(
-                    { _id: 'main' },
+                // Update Stats atomically to prevent race conditions (negative stock)
+                const result = await statsCollection.updateOne(
+                    { _id: 'main', totalStock: { $gte: amount } },
                     {
                         $inc: { totalStock: -amount, totalWeight: -totalWeightChange }
                     }
                 );
+
+                if (result.modifiedCount === 0) {
+                    return res.status(400).json({ error: 'Yetersiz stok veya envanter güncellenemedi.' });
+                }
 
                 // Log Transaction
                 await transactionsCollection.insertOne({
