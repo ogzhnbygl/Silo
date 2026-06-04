@@ -43,24 +43,28 @@ Her envanter değişikliğinin (Log) saklandığı koleksiyondur.
     - `date`: `Date`
     - `details`: `string` (Açıklama)
 
-## 🔌 API Referansı
+## 🔌 API Referansı & Rotalar
 
-### `/api/inventory`
+### Ön Yüz Rotaları (`react-router-dom`)
+- `/` - Dashboard (Stok Giriş/Çıkış modal formları ve hızlı özet kartları)
+- `/transactions` - Tüm geçmiş envanter hareketlerinin (Log) listelendiği sayfa
+- `/products` - Ürün Tanımlama / Katalog Ekranı
 
-#### GET
-Mevcut envanter istatistiklerini ve son işlem kayıtlarını getirir.
-- **Yanıt:** `{ stats: {...}, recentActivity: [...] }`
+### Sunucu API Endpoint'leri (Zod Validasyonlu)
 
-#### POST
-Bir envanter işlemi (Stok GİRİŞ veya Stok ÇIKIŞ) gerçekleştirir.
-- **Body:** `{ type: "IN"|"OUT", amount: 10, weightPerPkg: 4 }`
-- **İşlem:**
-    1. Auth kontrolü yapılır.
-    2. Stok yeterliliği (ÇIKIŞ için) kontrol edilir.
-    3. `inventory_stats` güncellenir.
-    4. `transactions` koleksiyonuna kayıt atılır.
+#### Envanter API (`/api/inventory`)
+- **GET `/api/inventory`**: Güncel stok istatistiklerini (`inventory_stats`) ve en son yapılan işlemleri (`transactions`) döner.
+- **POST `/api/inventory`**: Yeni bir stok hareketi (GİRİŞ veya ÇIKIŞ) işler. İstek gövdesi Zod şeması ile doğrulanır (miktar ve ağırlık pozitif sayı olmalıdır).
+    - **IN (Stok Giriş) Optimizasyonu:** Performansı artırmak amacıyla sunucu tarafındaki ilk `findOne` okuması kaldırılmıştır. MongoDB `updateOne` sorgusuna doğrudan `{ upsert: true }` parametresi verilerek veritabanı gidiş-dönüş süresi (RTT) yarı yarıya düşürülmüştür.
+    - **OUT (Stok Çıkış) Concurrency Çözümü:** İki kullanıcının aynı anda stok düşmeye çalışması durumunda negatif stoka düşülmesini engellemek için, MongoDB güncellemesinde atomik filtreleme (`$gte` ile stok miktarı kontrolü) kullanılır. Stok yetersizse güncelleme yapılmaz ve hata döndürülür.
 
-## 🔐 Güvenlik
+> [!IMPORTANT]
+> **Çoklu Ürün Desteği (Katalog):** Faz 2 kapsamında yapılması planlanan, bağımsız ürün tanımlama ve her ürünün stok seviyesini ayrı ayrı izleme özelliği (Adım 5), kullanıcı kararı doğrultusunda kapsam dışı tutulmuştur.
 
-- **Auth:** Apex ile paylaşılan JWT tabanlı oturum.
-- **Doğrulama:** Backend tarafında işlem öncesi stok kontrolü (Race condition yönetimi için MongoDB atomik operatörleri kullanılır).
+---
+
+## 🔐 Güvenlik ve Doğrulama
+
+- **Token Kontrolü:** Silo API istekleri Apex `verifyUser` ara katmanı ile korunur. SSO çerezi doğrulanarak işlem yapan kullanıcının Adı ve Soyadı (`transactions` kaydına yazılmak üzere) JWT payload'undan çekilir.
+- **Güvenli Rotalar:** Yetkisiz kullanıcıların doğrudan tarayıcı linki yazarak işlemlere veya Dashboard'a erişimi ön yüzde React Router data loaders ve AuthGuard koruyucuları ile kısıtlanmıştır.
+

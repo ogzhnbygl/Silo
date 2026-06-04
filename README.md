@@ -6,19 +6,20 @@ Stok seviyeleri için gerçek zamanlı **"Tek Doğruluk Kaynağı" (Single Sourc
 
 ## 🚀 Özellikler
 
-- **Merkezi Stok Kontrolü:**
+- **Merkezi Stok Kontrolü ve Concurrency (Faz 1 & Faz 2):**
     - Toplam mevcut stokun (kg/paket) büyük ve net gösterimi.
     - Stok sağlığını (Yüksek/Düşük/Kritik) temsil eden görsel ipuçları.
-- **Envanter Yönetimi:**
-    - **Stok Giriş:** Yeni sevkiyatları sisteme hızlıca kaydetme.
-    - **Stok Çıkış:** Kullanım/tüketim işlemlerini anlık olarak düşme.
-    - Negatif stok engelleme ve otomatik doğrulama mekanizmaları.
+    - **Race Condition Engelleme:** Stok çıkış (OUT) işlemlerinde MongoDB düzeyinde atomik bakiye kontrolü (`$gte` filtresi) ile yarış durumları engellenmiştir.
+- **İşlem ve Envanter Yönetimi (Performans & Doğrulama):**
+    - **Stok Giriş (IN) & Stok Çıkış (OUT):** Giriş/çıkış işlemleri anlık olarak düşülür.
+    - **Upsert Optimizasyonu:** Giriş (IN) işlemlerinde veritabanı gecikmesini azaltmak için sunucu tarafındaki mükerrer `findOne` araması silinmiş, doğrudan `{ upsert: true }` parametresi ile optimize edilmiştir.
+    - **Zod Giriş Validasyonları:** Miktar ve ağırlık bilgilerinin negatif veya geçersiz olmasını sunucuda engelleyen veri şeması doğrulaması.
+- **Güvenli Oturum ve Yönlendirme:**
+    - Apex merkezi kimlik doğrulamasına entegre `interapp_session` JWT çerez kontrolü.
+    - `react-router-dom` ile URL tabanlı yönlendirme (`/`, `/transactions`, `/products`).
 - **İşlem Şeffaflığı:**
-    - Her hareketin (GİRİŞ/ÇIKIŞ) kullanıcı bilgisi ve zaman damgasıyla kaydı.
+    - Her stok hareketinin kullanıcı bilgisi ve zaman damgasıyla transaction log koleksiyonuna kaydı.
     - Geçmiş işlemlerin detaylı listesi ve filtrelenmesi.
-- **Apex Entegrasyonu:**
-    - Merkezi kimlik doğrulama ile güvenli erişim.
-    - Kurumsal standartlara uygun oturum yönetimi.
 
 ## 🛠️ Teknolojiler
 
