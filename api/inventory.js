@@ -32,14 +32,130 @@ export default async function handler(req, res) {
                 await statsCollection.insertOne(stats);
             }
 
-            // Get recent transactions (last 10)
-            const recentActivity = await transactionsCollection
-                .find({})
-                .sort({ date: -1 })
-                .limit(10)
-                .toArray();
+            // Get recent transactions (last 10 by default, or all if all === 'true')
+            const { all, weekOffset, report } = req.query;
+            const offsetWeeks = parseInt(weekOffset, 10) || 0;
+            let query = transactionsCollection.find({}).sort({ date: -1 });
+            if (all !== 'true') {
+                query = query.limit(10);
+            }
+            const recentActivity = await query.toArray();
 
-            return res.status(200).json({ stats, recentActivity });
+            // Calculate weekly consumption
+            const startMonday = new Date();
+            const currentDay = startMonday.getDay();
+            const distanceToMonday = currentDay === 0 ? 6 : currentDay - 1;
+            const currentMonday = new Date(startMonday);
+            currentMonday.setDate(startMonday.getDate() - distanceToMonday);
+            currentMonday.setHours(0, 0, 0, 0);
+
+            let firstMonday;
+            let numWeeks = 6;
+            let shiftedEnd;
+
+            if (report === 'true') {
+                const oldestTx = await transactionsCollection.findOne({ type: 'OUT' }, { sort: { date: 1 } });
+                if (oldestTx) {
+                    const oldestDate = oldestTx.date;
+                    const oldestDay = oldestDate.getDay();
+                    const oldestDistance = oldestDay === 0 ? 6 : oldestDay - 1;
+                    firstMonday = new Date(oldestDate);
+                    firstMonday.setDate(oldestDate.getDate() - oldestDistance);
+                    firstMonday.setHours(0, 0, 0, 0);
+                } else {
+                    firstMonday = new Date(currentMonday);
+                }
+                const diffTime = Math.abs(currentMonday - firstMonday);
+                numWeeks = Math.round(diffTime / (1000 * 60 * 60 * 24 * 7));
+
+                shiftedEnd = new Date(currentMonday);
+                shiftedEnd.setDate(currentMonday.getDate() + 6);
+                shiftedEnd.setHours(23, 59, 59, 999);
+            } else {
+                const shiftedMonday = new Date(currentMonday);
+                shiftedMonday.setDate(shiftedMonday.getDate() - (offsetWeeks * 7 * 7));
+
+                firstMonday = new Date(shiftedMonday);
+                firstMonday.setDate(shiftedMonday.getDate() - (6 * 7));
+
+                shiftedEnd = new Date(shiftedMonday);
+                shiftedEnd.setDate(shiftedMonday.getDate() + 6);
+                shiftedEnd.setHours(23, 59, 59, 999);
+            }
+
+            const consumptionRaw = await transactionsCollection.aggregate([
+                {
+                    $match: {
+                        type: 'OUT',
+                        date: { $gte: firstMonday, $lte: shiftedEnd }
+                    }
+                },
+                {
+                    $group: {
+                        _id: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
+                        totalWeight: { $sum: "$weight" },
+                        totalPackages: { $sum: "$amount" }
+                    }
+                },
+                {
+                    $sort: { _id: 1 }
+                }
+            ]).toArray();
+
+            const weeklyConsumption = [];
+            for (let w = numWeeks; w >= 0; w--) {
+                const weekStart = new Date(firstMonday);
+                weekStart.setDate(firstMonday.getDate() + (numWeeks - w) * 7);
+                
+                const weekEnd = new Date(weekStart);
+                weekEnd.setDate(weekStart.getDate() + 6);
+                weekEnd.setHours(23, 59, 59, 999);
+                
+                // ISO week number calculation
+                const tempDate = new Date(weekStart);
+                tempDate.setHours(0, 0, 0, 0);
+                tempDate.setDate(tempDate.getDate() + 3 - (tempDate.getDay() + 6) % 7);
+                const weekYearRef = new Date(tempDate.getFullYear(), 0, 4);
+                const weekNum = 1 + Math.round(((tempDate.getTime() - weekYearRef.getTime()) / 86400000 - 3 + (weekYearRef.getDay() + 6) % 7) / 7);
+
+                const weekLabel = `${weekNum}. Hafta`;
+                const dateRangeLabel = `${weekStart.getDate()} - ${weekEnd.getDate()} ${weekStart.toLocaleDateString('tr-TR', { month: 'short', year: 'numeric' })}`;
+
+                const days = [];
+                let weekWeight = 0;
+                let weekPackages = 0;
+
+                for (let d = 0; d < 7; d++) {
+                    const dayDate = new Date(weekStart);
+                    dayDate.setDate(weekStart.getDate() + d);
+                    const dateString = dayDate.toISOString().split('T')[0];
+                    const match = consumptionRaw.find(item => item._id === dateString);
+                    const dayWeight = match ? match.totalWeight : 0;
+                    const dayPackages = match ? match.totalPackages : 0;
+                    
+                    weekWeight += dayWeight;
+                    weekPackages += dayPackages;
+
+                    days.push({
+                        date: dateString,
+                        dayName: dayDate.toLocaleDateString('tr-TR', { weekday: 'short' }),
+                        weight: dayWeight,
+                        packages: dayPackages
+                    });
+                }
+
+                weeklyConsumption.push({
+                    weekIndex: numWeeks - w,
+                    weekNum,
+                    weekLabel,
+                    dateRangeLabel,
+                    weight: weekWeight,
+                    packages: weekPackages,
+                    days
+                });
+            }
+
+            return res.status(200).json({ stats, recentActivity, weeklyConsumption });
         } catch (error) {
             console.error('Inventory GET Error:', error);
             return res.status(500).json({ error: 'Veri alınamadı' });

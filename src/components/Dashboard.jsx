@@ -5,18 +5,27 @@ import { StatusCard } from './StatusCard';
 import { ActionCard } from './ActionCard';
 import { ActivityList } from './ActivityList';
 import { TransactionModal } from './TransactionModal';
+import { ConsumptionChart } from './ConsumptionChart';
 
 export function Dashboard() {
     const [data, setData] = useState({
         stats: { totalStock: 0, totalWeight: 0 },
-        recentActivity: []
+        recentActivity: [],
+        weeklyConsumption: []
     });
     const [loading, setLoading] = useState(true);
     const [modalConfig, setModalConfig] = useState({ isOpen: false, type: null });
+    const [showAll, setShowAll] = useState(false);
+    const [weekOffset, setWeekOffset] = useState(0);
 
-    const fetchData = async () => {
+    const fetchData = async (fetchAll = showAll, offset = weekOffset) => {
         try {
-            const res = await fetch('/api/inventory');
+            const params = new URLSearchParams();
+            if (fetchAll) params.append('all', 'true');
+            if (offset > 0) params.append('weekOffset', offset.toString());
+
+            const url = `/api/inventory?${params.toString()}`;
+            const res = await fetch(url);
             if (res.ok) {
                 const json = await res.json();
                 setData(json);
@@ -32,13 +41,33 @@ export function Dashboard() {
         fetchData();
     }, []);
 
+    const handleToggleShowAll = () => {
+        const nextShowAll = !showAll;
+        setShowAll(nextShowAll);
+        fetchData(nextShowAll, weekOffset);
+    };
+
+    const handlePrevWeeks = () => {
+        const nextOffset = weekOffset + 1;
+        setWeekOffset(nextOffset);
+        fetchData(showAll, nextOffset);
+    };
+
+    const handleNextWeeks = () => {
+        if (weekOffset > 0) {
+            const nextOffset = weekOffset - 1;
+            setWeekOffset(nextOffset);
+            fetchData(showAll, nextOffset);
+        }
+    };
+
     const handleAction = (type) => {
         setModalConfig({ isOpen: true, type });
     };
 
     const handleSuccess = () => {
-        fetchData();
-        // Maybe show toast?
+        setWeekOffset(0);
+        fetchData(showAll, 0);
     };
 
     const stockStatus = data.stats.totalStock > 10 ? 'Optimal Seviye' : 'Stok Az';
@@ -85,9 +114,23 @@ export function Dashboard() {
                 />
             </div>
 
+            {/* Weekly Consumption Chart */}
+            <div className="mt-8">
+                <ConsumptionChart 
+                    data={data.weeklyConsumption || []} 
+                    weekOffset={weekOffset}
+                    onPrevWeeks={handlePrevWeeks}
+                    onNextWeeks={handleNextWeeks}
+                />
+            </div>
+
             {/* Recent Activity */}
             <div className="mt-8">
-                <ActivityList activities={data.recentActivity} />
+                <ActivityList 
+                    activities={data.recentActivity} 
+                    showAll={showAll}
+                    onToggleShowAll={handleToggleShowAll}
+                />
             </div>
 
             <TransactionModal

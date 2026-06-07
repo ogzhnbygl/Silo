@@ -1,12 +1,17 @@
 import React from 'react';
 import { ArrowUpRight, ArrowDownLeft, Clock } from 'lucide-react';
 
-export function ActivityList({ activities = [] }) {
+export function ActivityList({ activities = [], showAll = false, onToggleShowAll }) {
     return (
         <div className="bg-white rounded-xl shadow-sm border border-slate-100 overflow-hidden">
             <div className="p-4 border-b border-slate-100 flex justify-between items-center bg-slate-50/50">
                 <h3 className="font-semibold text-slate-800">Son Hareketler</h3>
-                <button className="text-sm text-blue-600 font-medium hover:text-blue-700">Tümünü Gör</button>
+                <button 
+                    onClick={onToggleShowAll}
+                    className="text-sm text-blue-600 font-medium hover:text-blue-700"
+                >
+                    {showAll ? 'Daha Az Göster' : 'Tümünü Gör'}
+                </button>
             </div>
 
             <div className="divide-y divide-slate-100">
