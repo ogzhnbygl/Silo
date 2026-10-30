@@ -1,15 +1,20 @@
-import React, { useEffect, useState } from 'react';
-import { Package, Weight, Plus, LogOut } from 'lucide-react'; // LogOut is for Take icon, maybe Upload/Export better?
-import { StatsCard } from './StatsCard';
-import { StatusCard } from './StatusCard';
+import React, { useEffect, useState, useCallback } from 'react';
+import { Plus, LogOut } from 'lucide-react';
+import { PRODUCTS, ACTIVE_PRODUCT_IDS } from '../../lib/products.js';
+import { ProductStockCard } from './ProductStockCard';
 import { ActionCard } from './ActionCard';
 import { ActivityList } from './ActivityList';
 import { TransactionModal } from './TransactionModal';
 import { ConsumptionChart } from './ConsumptionChart';
 
+const DEFAULT_PRODUCTS = {
+    A03: { ...PRODUCTS.A03, totalStock: 0, totalWeight: 0 },
+    A04: { ...PRODUCTS.A04, totalStock: 0, totalWeight: 0 }
+};
+
 export function Dashboard() {
     const [data, setData] = useState({
-        stats: { totalStock: 0, totalWeight: 0 },
+        stats: { totalStock: 0, totalWeight: 0, products: DEFAULT_PRODUCTS },
         recentActivity: [],
         weeklyConsumption: []
     });
@@ -18,7 +23,7 @@ export function Dashboard() {
     const [showAll, setShowAll] = useState(false);
     const [weekOffset, setWeekOffset] = useState(0);
 
-    const fetchData = async (fetchAll = showAll, offset = weekOffset) => {
+    const fetchData = useCallback(async (fetchAll = false, offset = 0) => {
         try {
             const params = new URLSearchParams();
             if (fetchAll) params.append('all', 'true');
@@ -35,11 +40,11 @@ export function Dashboard() {
         } finally {
             setLoading(false);
         }
-    };
+    }, []);
 
     useEffect(() => {
         fetchData();
-    }, []);
+    }, [fetchData]);
 
     const handleToggleShowAll = () => {
         const nextShowAll = !showAll;
@@ -70,33 +75,22 @@ export function Dashboard() {
         fetchData(showAll, 0);
     };
 
-    const stockStatus = data.stats.totalStock > 10 ? 'Optimal Seviye' : 'Stok Az';
-    const isOptimal = data.stats.totalStock > 10;
-
     if (loading) return <div className="animate-pulse p-4">Yükleniyor...</div>;
+
+    const productStats = data.stats?.products || DEFAULT_PRODUCTS;
 
     return (
         <div className="space-y-6">
-            {/* Top Stats Row */}
+            {/* Side-by-Side Product Stock & Status Cards (SAFE A03 & SAFE A04) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                <StatsCard
-                    title="Toplam Stok"
-                    value={data.stats.totalStock}
-                    unit="Paket"
-                    icon={Package} // Using Package icon for stock
-                    colorClass="text-slate-900"
-                />
-                <StatsCard
-                    title="Toplam Ağırlık"
-                    value={data.stats.totalWeight}
-                    unit="kg"
-                    icon={Weight}
-                    colorClass="text-slate-900"
-                />
+                {ACTIVE_PRODUCT_IDS.map((prodId) => {
+                    const merged = {
+                        ...PRODUCTS[prodId],
+                        ...(productStats[prodId] || {})
+                    };
+                    return <ProductStockCard key={prodId} product={merged} />;
+                })}
             </div>
-
-            {/* Status Row */}
-            <StatusCard status={stockStatus} isOptimal={isOptimal} />
 
             {/* Action Buttons Row */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
@@ -108,7 +102,7 @@ export function Dashboard() {
                 />
                 <ActionCard
                     title="Paket Çıkışı"
-                    icon={LogOut} // Using LogOut (exit) icon for taking package
+                    icon={LogOut}
                     variant="outline"
                     onClick={() => handleAction('OUT')}
                 />
@@ -116,8 +110,8 @@ export function Dashboard() {
 
             {/* Weekly Consumption Chart */}
             <div className="mt-8">
-                <ConsumptionChart 
-                    data={data.weeklyConsumption || []} 
+                <ConsumptionChart
+                    data={data.weeklyConsumption || []}
                     weekOffset={weekOffset}
                     onPrevWeeks={handlePrevWeeks}
                     onNextWeeks={handleNextWeeks}
@@ -126,8 +120,8 @@ export function Dashboard() {
 
             {/* Recent Activity */}
             <div className="mt-8">
-                <ActivityList 
-                    activities={data.recentActivity} 
+                <ActivityList
+                    activities={data.recentActivity}
                     showAll={showAll}
                     onToggleShowAll={handleToggleShowAll}
                 />
@@ -137,6 +131,7 @@ export function Dashboard() {
                 isOpen={modalConfig.isOpen}
                 onClose={() => setModalConfig({ ...modalConfig, isOpen: false })}
                 type={modalConfig.type}
+                productStats={productStats}
                 onSuccess={handleSuccess}
             />
         </div>

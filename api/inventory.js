@@ -1,12 +1,45 @@
 import clientPromise from '../lib/mongodb.js';
 import { verifyUser } from './lib/auth.js';
+import { PRODUCTS, ACTIVE_PRODUCT_IDS, getProductInfo } from '../lib/products.js';
 import { z } from 'zod';
+
+const DAY_MS = 86400000;
 
 const inventoryPostSchema = z.object({
     type: z.enum(['IN', 'OUT']),
-    amount: z.number().int().positive('Miktar pozitif bir tam sayı olmalıdır.'),
-    weightPerPkg: z.number().positive('Paket ağırlığı pozitif bir sayı olmalıdır.').optional()
+    product: z.enum(['A03', 'A04'], {
+        message: 'Geçerli bir yem türü seçilmelidir (SAFE® A03 veya SAFE® A04).'
+    }),
+    amount: z.number().int().positive('Miktar pozitif bir tam sayı olmalıdır.')
 });
+
+function getIstanbulDateString(date) {
+    return new Intl.DateTimeFormat('en-CA', {
+        timeZone: 'Europe/Istanbul',
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+    }).format(date);
+}
+
+function getMondayAnchor(date) {
+    const dateStr = getIstanbulDateString(date);
+    const anchor = new Date(`${dateStr}T12:00:00Z`);
+    const day = anchor.getUTCDay();
+    const distanceToMonday = day === 0 ? 6 : day - 1;
+    return new Date(anchor.getTime() - distanceToMonday * DAY_MS);
+}
+
+function getIsoWeekNumber(utcNoonDate) {
+    const tempDate = new Date(Date.UTC(
+        utcNoonDate.getUTCFullYear(),
+        utcNoonDate.getUTCMonth(),
+        utcNoonDate.getUTCDate()
+    ));
+    tempDate.setUTCDate(tempDate.getUTCDate() + 3 - ((tempDate.getUTCDay() + 6) % 7));
+    const weekYearRef = new Date(Date.UTC(tempDate.getUTCFullYear(), 0, 4));
+    return 1 + Math.round(((tempDate.getTime() - weekYearRef.getTime()) / DAY_MS - 3 + ((weekYearRef.getUTCDay() + 6) % 7)) / 7);
+}
 
 export default async function handler(req, res) {
     let user;
@@ -23,14 +56,44 @@ export default async function handler(req, res) {
 
     if (req.method === 'GET') {
         try {
-            // Get singleton stats
-            let stats = await statsCollection.findOne({ _id: 'main' });
+            // Fetch product-level stats for SAFE A03 & SAFE A04 (preserving legacy 'main' document untouched)
+            const statsDocs = await statsCollection.find({ _id: { $in: ACTIVE_PRODUCT_IDS } }).toArray();
+            const statsById = Object.fromEntries(statsDocs.map(doc => [doc._id, doc]));
 
-            if (!stats) {
-                // Initialize if not exists
-                stats = { _id: 'main', totalStock: 0, totalWeight: 0 };
-                await statsCollection.insertOne(stats);
+            const productStats = {};
+            for (const productId of ACTIVE_PRODUCT_IDS) {
+                const productMeta = PRODUCTS[productId];
+                let doc = statsById[productId];
+                if (!doc) {
+                    doc = {
+                        _id: productId,
+                        productCode: productId,
+                        weightPerPkg: productMeta.weightPerPkg,
+                        totalStock: 0,
+                        totalWeight: 0
+                    };
+                    await statsCollection.updateOne(
+                        { _id: productId },
+                        { $setOnInsert: doc },
+                        { upsert: true }
+                    );
+                }
+                productStats[productId] = {
+                    id: productId,
+                    name: productMeta.name,
+                    subtitle: productMeta.subtitle,
+                    weightPerPkg: productMeta.weightPerPkg,
+                    lowStockThreshold: productMeta.lowStockThreshold,
+                    totalStock: doc.totalStock || 0,
+                    totalWeight: doc.totalWeight || 0
+                };
             }
+
+            const stats = {
+                totalStock: productStats.A03.totalStock + productStats.A04.totalStock,
+                totalWeight: productStats.A03.totalWeight + productStats.A04.totalWeight,
+                products: productStats
+            };
 
             // Get recent transactions (last 10 by default, or all if all === 'true')
             const { all, weekOffset, report } = req.query;
@@ -39,118 +102,142 @@ export default async function handler(req, res) {
             if (all !== 'true') {
                 query = query.limit(10);
             }
-            const recentActivity = await query.toArray();
+            const rawActivity = await query.toArray();
+            const recentActivity = rawActivity.map(tx => {
+                const prodInfo = getProductInfo(tx.product);
+                return {
+                    ...tx,
+                    product: prodInfo.id,
+                    productName: tx.productName || prodInfo.name,
+                    weightPerPkg: tx.weightPerPkg || prodInfo.weightPerPkg
+                };
+            });
 
-            // Calculate weekly consumption
-            const startMonday = new Date();
-            const currentDay = startMonday.getDay();
-            const distanceToMonday = currentDay === 0 ? 6 : currentDay - 1;
-            const currentMonday = new Date(startMonday);
-            currentMonday.setDate(startMonday.getDate() - distanceToMonday);
-            currentMonday.setHours(0, 0, 0, 0);
+            // Calculate weekly consumption (in Europe/Istanbul timezone)
+            const currentMonday = getMondayAnchor(new Date());
 
             let firstMonday;
             let numWeeks = 6;
-            let shiftedEnd;
+            let endSunday;
 
             if (report === 'true') {
                 const oldestTx = await transactionsCollection.findOne({ type: 'OUT' }, { sort: { date: 1 } });
-                if (oldestTx) {
-                    const oldestDate = oldestTx.date;
-                    const oldestDay = oldestDate.getDay();
-                    const oldestDistance = oldestDay === 0 ? 6 : oldestDay - 1;
-                    firstMonday = new Date(oldestDate);
-                    firstMonday.setDate(oldestDate.getDate() - oldestDistance);
-                    firstMonday.setHours(0, 0, 0, 0);
+                if (oldestTx && oldestTx.date) {
+                    firstMonday = getMondayAnchor(new Date(oldestTx.date));
                 } else {
                     firstMonday = new Date(currentMonday);
                 }
-                const diffTime = Math.abs(currentMonday - firstMonday);
-                numWeeks = Math.round(diffTime / (1000 * 60 * 60 * 24 * 7));
-
-                shiftedEnd = new Date(currentMonday);
-                shiftedEnd.setDate(currentMonday.getDate() + 6);
-                shiftedEnd.setHours(23, 59, 59, 999);
+                const diffTime = Math.max(0, currentMonday.getTime() - firstMonday.getTime());
+                numWeeks = Math.round(diffTime / (DAY_MS * 7));
+                endSunday = new Date(currentMonday.getTime() + 6 * DAY_MS);
             } else {
-                const shiftedMonday = new Date(currentMonday);
-                shiftedMonday.setDate(shiftedMonday.getDate() - (offsetWeeks * 7 * 7));
-
-                firstMonday = new Date(shiftedMonday);
-                firstMonday.setDate(shiftedMonday.getDate() - (6 * 7));
-
-                shiftedEnd = new Date(shiftedMonday);
-                shiftedEnd.setDate(shiftedMonday.getDate() + 6);
-                shiftedEnd.setHours(23, 59, 59, 999);
+                const shiftedMonday = new Date(currentMonday.getTime() - offsetWeeks * 7 * 7 * DAY_MS);
+                firstMonday = new Date(shiftedMonday.getTime() - 6 * 7 * DAY_MS);
+                endSunday = new Date(shiftedMonday.getTime() + 6 * DAY_MS);
             }
+
+            const rangeStartStr = firstMonday.toISOString().split('T')[0];
+            const rangeEndStr = endSunday.toISOString().split('T')[0];
+            const rangeStart = new Date(`${rangeStartStr}T00:00:00.000+03:00`);
+            const rangeEnd = new Date(`${rangeEndStr}T23:59:59.999+03:00`);
 
             const consumptionRaw = await transactionsCollection.aggregate([
                 {
                     $match: {
                         type: 'OUT',
-                        date: { $gte: firstMonday, $lte: shiftedEnd }
+                        date: { $gte: rangeStart, $lte: rangeEnd }
                     }
                 },
                 {
                     $group: {
-                        _id: { $dateToString: { format: "%Y-%m-%d", date: "$date" } },
+                        _id: {
+                            date: { $dateToString: { format: "%Y-%m-%d", date: "$date", timezone: "Europe/Istanbul" } },
+                            product: { $ifNull: ["$product", "OPTIMA"] }
+                        },
                         totalWeight: { $sum: "$weight" },
                         totalPackages: { $sum: "$amount" }
                     }
                 },
                 {
-                    $sort: { _id: 1 }
+                    $sort: { "_id.date": 1 }
                 }
             ]).toArray();
 
+            // Index consumption by date -> product
+            const consumptionMap = new Map();
+            for (const row of consumptionRaw) {
+                const dateKey = row._id.date;
+                const prodKey = row._id.product;
+                if (!consumptionMap.has(dateKey)) {
+                    consumptionMap.set(dateKey, {});
+                }
+                consumptionMap.get(dateKey)[prodKey] = {
+                    weight: row.totalWeight || 0,
+                    packages: row.totalPackages || 0
+                };
+            }
+
             const weeklyConsumption = [];
             for (let w = numWeeks; w >= 0; w--) {
-                const weekStart = new Date(firstMonday);
-                weekStart.setDate(firstMonday.getDate() + (numWeeks - w) * 7);
-                
-                const weekEnd = new Date(weekStart);
-                weekEnd.setDate(weekStart.getDate() + 6);
-                weekEnd.setHours(23, 59, 59, 999);
-                
-                // ISO week number calculation
-                const tempDate = new Date(weekStart);
-                tempDate.setHours(0, 0, 0, 0);
-                tempDate.setDate(tempDate.getDate() + 3 - (tempDate.getDay() + 6) % 7);
-                const weekYearRef = new Date(tempDate.getFullYear(), 0, 4);
-                const weekNum = 1 + Math.round(((tempDate.getTime() - weekYearRef.getTime()) / 86400000 - 3 + (weekYearRef.getDay() + 6) % 7) / 7);
+                const weekIndex = numWeeks - w;
+                const weekStart = new Date(firstMonday.getTime() + weekIndex * 7 * DAY_MS);
+                const weekEnd = new Date(weekStart.getTime() + 6 * DAY_MS);
 
+                const weekNum = getIsoWeekNumber(weekStart);
                 const weekLabel = `${weekNum}. Hafta`;
-                const dateRangeLabel = `${weekStart.getDate()} - ${weekEnd.getDate()} ${weekStart.toLocaleDateString('tr-TR', { month: 'short', year: 'numeric' })}`;
+                const dateRangeLabel = `${weekStart.getUTCDate()} - ${weekEnd.getUTCDate()} ${weekEnd.toLocaleDateString('tr-TR', { month: 'short', year: 'numeric', timeZone: 'Europe/Istanbul' })}`;
 
                 const days = [];
                 let weekWeight = 0;
                 let weekPackages = 0;
+                const weekByProduct = {
+                    A03: { weight: 0, packages: 0 },
+                    A04: { weight: 0, packages: 0 },
+                    OPTIMA: { weight: 0, packages: 0 }
+                };
 
                 for (let d = 0; d < 7; d++) {
-                    const dayDate = new Date(weekStart);
-                    dayDate.setDate(weekStart.getDate() + d);
+                    const dayDate = new Date(weekStart.getTime() + d * DAY_MS);
                     const dateString = dayDate.toISOString().split('T')[0];
-                    const match = consumptionRaw.find(item => item._id === dateString);
-                    const dayWeight = match ? match.totalWeight : 0;
-                    const dayPackages = match ? match.totalPackages : 0;
-                    
+                    const dayProducts = consumptionMap.get(dateString) || {};
+
+                    const a03 = dayProducts.A03 || { weight: 0, packages: 0 };
+                    const a04 = dayProducts.A04 || { weight: 0, packages: 0 };
+                    const optima = dayProducts.OPTIMA || { weight: 0, packages: 0 };
+
+                    const dayWeight = a03.weight + a04.weight + optima.weight;
+                    const dayPackages = a03.packages + a04.packages + optima.packages;
+
                     weekWeight += dayWeight;
                     weekPackages += dayPackages;
+                    weekByProduct.A03.weight += a03.weight;
+                    weekByProduct.A03.packages += a03.packages;
+                    weekByProduct.A04.weight += a04.weight;
+                    weekByProduct.A04.packages += a04.packages;
+                    weekByProduct.OPTIMA.weight += optima.weight;
+                    weekByProduct.OPTIMA.packages += optima.packages;
 
                     days.push({
                         date: dateString,
-                        dayName: dayDate.toLocaleDateString('tr-TR', { weekday: 'short' }),
+                        dayName: dayDate.toLocaleDateString('tr-TR', { weekday: 'short', timeZone: 'Europe/Istanbul' }),
                         weight: dayWeight,
-                        packages: dayPackages
+                        packages: dayPackages,
+                        byProduct: {
+                            A03: a03,
+                            A04: a04,
+                            OPTIMA: optima
+                        }
                     });
                 }
 
                 weeklyConsumption.push({
-                    weekIndex: numWeeks - w,
+                    weekIndex,
                     weekNum,
                     weekLabel,
                     dateRangeLabel,
                     weight: weekWeight,
                     packages: weekPackages,
+                    byProduct: weekByProduct,
                     days
                 });
             }
@@ -164,20 +251,23 @@ export default async function handler(req, res) {
         try {
             const bodyResult = inventoryPostSchema.safeParse(req.body);
             if (!bodyResult.success) {
-                return res.status(400).json({ error: bodyResult.error.errors[0].message });
+                const msg = bodyResult.error.issues?.[0]?.message || 'Geçersiz istek verisi.';
+                return res.status(400).json({ error: msg });
             }
-            const { type, amount, weightPerPkg } = bodyResult.data;
+            const { type, product, amount } = bodyResult.data;
 
-            const pkgWeight = weightPerPkg || 4; // Default 4kg per package if not specified
+            const productMeta = PRODUCTS[product];
+            const pkgWeight = productMeta.weightPerPkg; // 10 kg per package for SAFE A03 & A04
             const totalWeightChange = amount * pkgWeight;
 
             // Transaction Logic
             if (type === 'IN') {
-                // Update Stats
+                // Update product-specific stats
                 await statsCollection.updateOne(
-                    { _id: 'main' },
+                    { _id: product },
                     {
-                        $inc: { totalStock: amount, totalWeight: totalWeightChange }
+                        $inc: { totalStock: amount, totalWeight: totalWeightChange },
+                        $set: { productCode: product, weightPerPkg: pkgWeight }
                     },
                     { upsert: true }
                 );
@@ -185,6 +275,9 @@ export default async function handler(req, res) {
                 // Log Transaction
                 await transactionsCollection.insertOne({
                     type: 'IN',
+                    product,
+                    productName: productMeta.name,
+                    weightPerPkg: pkgWeight,
                     amount,
                     weight: totalWeightChange,
                     user: user.name,
@@ -193,21 +286,26 @@ export default async function handler(req, res) {
                 });
 
             } else if (type === 'OUT') {
-                // Update Stats atomically to prevent race conditions (negative stock)
+                // Update product-specific stats atomically to prevent race conditions (negative stock)
                 const result = await statsCollection.updateOne(
-                    { _id: 'main', totalStock: { $gte: amount } },
+                    { _id: product, totalStock: { $gte: amount } },
                     {
                         $inc: { totalStock: -amount, totalWeight: -totalWeightChange }
                     }
                 );
 
                 if (result.modifiedCount === 0) {
-                    return res.status(400).json({ error: 'Yetersiz stok veya envanter güncellenemedi.' });
+                    return res.status(400).json({
+                        error: `${productMeta.name} için yetersiz stok veya envanter güncellenemedi.`
+                    });
                 }
 
                 // Log Transaction
                 await transactionsCollection.insertOne({
                     type: 'OUT',
+                    product,
+                    productName: productMeta.name,
+                    weightPerPkg: pkgWeight,
                     amount,
                     weight: totalWeightChange,
                     user: user.name,
