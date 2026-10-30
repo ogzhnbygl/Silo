@@ -1,9 +1,9 @@
-import { verifyAuth } from '../../lib/auth.js';
+import { verifyAuthWithStatus } from '../../lib/auth.js';
 
 export async function verifyUser(req) {
-    const user = await verifyAuth(req, 'silo');
+    const { user, status, error } = await verifyAuthWithStatus(req, 'silo');
     if (!user) {
-        throw { status: 401, message: 'Authentication failed' };
+        throw { status: status || 401, message: error || 'Authentication failed' };
     }
     return {
         ...user,

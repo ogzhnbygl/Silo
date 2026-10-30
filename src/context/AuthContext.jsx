@@ -75,8 +75,13 @@ export const AuthProvider = ({ children }) => {
         }
     };
 
-    const logout = () => {
-        window.location.href = getApexUrl();
+    const logout = async () => {
+        try {
+            await fetch('/api/auth/session', { method: 'DELETE', credentials: 'include' });
+        } catch (error) {
+            console.error('Logout error:', error);
+        }
+        window.location.href = `${getApexUrl()}/login`;
     };
 
     useEffect(() => {
