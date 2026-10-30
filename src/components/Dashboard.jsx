@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { Plus, LogOut } from 'lucide-react';
+import { Plus, LogOut, AlertCircle, RefreshCw } from 'lucide-react';
 import { PRODUCTS, ACTIVE_PRODUCT_IDS } from '../../lib/products.js';
 import { ProductStockCard } from './ProductStockCard';
 import { ActionCard } from './ActionCard';
@@ -19,24 +19,29 @@ export function Dashboard() {
         weeklyConsumption: []
     });
     const [loading, setLoading] = useState(true);
+    const [error, setError] = useState('');
     const [modalConfig, setModalConfig] = useState({ isOpen: false, type: null });
     const [showAll, setShowAll] = useState(false);
     const [weekOffset, setWeekOffset] = useState(0);
 
     const fetchData = useCallback(async (fetchAll = false, offset = 0) => {
         try {
+            setError('');
             const params = new URLSearchParams();
             if (fetchAll) params.append('all', 'true');
             if (offset > 0) params.append('weekOffset', offset.toString());
 
             const url = `/api/inventory?${params.toString()}`;
             const res = await fetch(url);
-            if (res.ok) {
-                const json = await res.json();
-                setData(json);
+            if (!res.ok) {
+                const errPayload = await res.json().catch(() => ({}));
+                throw new Error(errPayload.error || 'Envanter verileri yüklenemedi.');
             }
-        } catch (error) {
-            console.error('Failed to fetch data', error);
+            const json = await res.json();
+            setData(json);
+        } catch (err) {
+            console.error('Failed to fetch data', err);
+            setError(err.message || 'Sunucuya bağlanırken bir hata oluştu.');
         } finally {
             setLoading(false);
         }
@@ -81,6 +86,26 @@ export function Dashboard() {
 
     return (
         <div className="space-y-6">
+            {error && (
+                <div
+                    role="alert"
+                    className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-xl bg-red-50 border border-red-200 text-red-700 text-sm"
+                >
+                    <div className="flex items-center gap-2.5 font-medium">
+                        <AlertCircle size={18} className="shrink-0" aria-hidden="true" />
+                        <span>{error}</span>
+                    </div>
+                    <button
+                        type="button"
+                        onClick={() => fetchData(showAll, weekOffset)}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-red-200 text-red-700 hover:bg-red-100 text-xs font-semibold transition-colors self-start sm:self-auto"
+                    >
+                        <RefreshCw size={14} aria-hidden="true" />
+                        Tekrar Dene
+                    </button>
+                </div>
+            )}
+
             {/* Side-by-Side Product Stock & Status Cards (SAFE A03 & SAFE A04) */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 {ACTIVE_PRODUCT_IDS.map((prodId) => {

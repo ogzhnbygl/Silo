@@ -185,7 +185,7 @@ export function ConsumptionChart({ data = [], weekOffset = 0, onPrevWeeks, onNex
                             const metrics = getMetrics(item);
                             const heightPercent = (metrics.weight / maxWeight) * 100;
                             const hasData = metrics.weight > 0;
-                            const canDrillDown = !isDrillDown && (item.weight || 0) > 0;
+                            const canDrillDown = !isDrillDown && hasData;
 
                             return (
                                 <div
@@ -199,6 +199,7 @@ export function ConsumptionChart({ data = [], weekOffset = 0, onPrevWeeks, onNex
                                     }}
                                     role={canDrillDown ? 'button' : undefined}
                                     tabIndex={canDrillDown ? 0 : undefined}
+                                    aria-label={canDrillDown ? `${item.weekLabel} (${item.dateRangeLabel}) günlük detayını aç: ${metrics.weight} kg` : undefined}
                                     className={`flex-1 flex flex-col items-center h-full justify-end group relative ${
                                         canDrillDown ? 'cursor-pointer focus:outline-none' : ''
                                     }`}

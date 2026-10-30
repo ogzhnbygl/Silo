@@ -38,7 +38,7 @@ function vercelServerless() {
             const data = Buffer.concat(buffers).toString();
             try {
               body = JSON.parse(data);
-            } catch (e) {
+            } catch {
               body = data;
             }
           }
