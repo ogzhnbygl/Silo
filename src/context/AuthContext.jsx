@@ -2,6 +2,21 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 
 const AuthContext = createContext(null);
 
+export const isPreviewHost = () => {
+    if (typeof window === 'undefined') return false;
+    const h = window.location.hostname;
+    return h === 'test.wildtype.app' || h.startsWith('test-') || h.endsWith('.vercel.app');
+};
+
+export const getApexUrl = () => {
+    if (typeof window !== 'undefined') {
+        const h = window.location.hostname;
+        if (h === 'localhost' || h === '127.0.0.1') return 'http://localhost:5173';
+        if (isPreviewHost()) return 'https://test.wildtype.app';
+    }
+    return 'https://wildtype.app';
+};
+
 export const useAuth = () => {
     const context = useContext(AuthContext);
     if (!context) {
@@ -47,21 +62,21 @@ export const AuthProvider = ({ children }) => {
                 const errorData = await response.json().catch(() => ({}));
                 console.error('Access Forbidden:', errorData.error);
                 alert(errorData.error || 'Bu uygulamaya erişim yetkiniz bulunmamaktadır.');
-                window.location.href = 'https://wildtype.app';
+                window.location.href = getApexUrl();
             } else {
                 console.warn('Authentication failed, redirecting to login...');
-                window.location.href = 'https://wildtype.app/login';
+                window.location.href = `${getApexUrl()}/login`;
             }
         } catch (error) {
             console.error('Auth check error:', error);
-            window.location.href = 'https://wildtype.app/login';
+            window.location.href = `${getApexUrl()}/login`;
         } finally {
             setLoading(false);
         }
     };
 
     const logout = () => {
-        window.location.href = 'https://wildtype.app';
+        window.location.href = getApexUrl();
     };
 
     useEffect(() => {

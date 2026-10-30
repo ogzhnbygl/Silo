@@ -1,5 +1,5 @@
 import { Package, LogOut } from 'lucide-react';
-import { useAuth } from '../context/AuthContext';
+import { useAuth, isPreviewHost } from '../context/AuthContext';
 
 export function Layout({ children }) {
     const { logout, user } = useAuth();
@@ -13,7 +13,14 @@ export function Layout({ children }) {
                         <div className="bg-blue-600 p-2 rounded-lg text-white">
                             <Package size={24} />
                         </div>
-                        <h1 className="text-xl font-bold text-slate-800">Silo - Stok Yönetimi</h1>
+                        <h1 className="text-xl font-bold text-slate-800 flex items-center gap-2">
+                            Silo - Stok Yönetimi
+                            {isPreviewHost() && (
+                                <span className="px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider bg-amber-100 text-amber-800 border border-amber-300 rounded-full">
+                                    Test Ortamı
+                                </span>
+                            )}
+                        </h1>
                     </div>
 
                     <div className="flex items-center gap-4">

@@ -1,4 +1,4 @@
-import clientPromise from '../lib/mongodb.js';
+import clientPromise, { getDbName } from '../lib/mongodb.js';
 import { verifyUser } from './lib/auth.js';
 import { PRODUCTS, ACTIVE_PRODUCT_IDS, getProductInfo } from '../lib/products.js';
 import { z } from 'zod';
@@ -50,7 +50,7 @@ export default async function handler(req, res) {
     }
 
     const client = await clientPromise;
-    const db = client.db('Silo_db');
+    const db = client.db(getDbName('Silo_db'));
     const statsCollection = db.collection('inventory_stats');
     const transactionsCollection = db.collection('transactions');
 
